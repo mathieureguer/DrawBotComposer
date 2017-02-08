@@ -47,7 +47,13 @@ class DrawBotComposer(object):
         # notification
         data = {"value":(x,y)}
         self.dispatcher.postNotification(notification=translate_notification_name, observable=self, data=data)
-        self._test_overflow()
+        self._test_overflow(self.current_position_x, self.current_position_y)
+
+    def bump_translate(self, x, y):
+        """test overflow without doing the acutal translation"""
+        bump_x = self.current_position_x + x
+        bump_y = self.current_position_y + y
+        self._test_overflow(bump_y, bump_y)
     
     # Back to origin
 
@@ -66,29 +72,29 @@ class DrawBotComposer(object):
 
     # Overflow notification
 
-    def _test_overflow(self):
+    def _test_overflow(self, x, y):
         if self.width == None:
             overflow_width = 0
         else:
-            overflow_width = self._test_overflow_width()
+            overflow_width = self._test_overflow_width(x)
         if self.height == None:
             overflow_height = 0
         else:
-            overflow_height = self._test_overflow_height()
+            overflow_height = self._test_overflow_height(y)
         if overflow_width != 0 or overflow_height != 0:
             data = {"overflow":(overflow_width, overflow_height)}
             self.dispatcher.postNotification(notification=overflow_notification_name, observable=self, data=data)
         return (overflow_width, overflow_height)
     
-    def _test_overflow_width(self):
-         overflow = self._test_limit(self.current_position_x, self.width)
+    def _test_overflow_width(self, x):
+         overflow = self._test_limit(x, self.width)
          if overflow != 0:
             data = {"overflow_width":overflow}
             self.dispatcher.postNotification(notification=overflow_width_notification_name, observable=self, data=data)
          return overflow
 
-    def _test_overflow_height(self):
-        overflow = self._test_limit(self.current_position_y, self.height)
+    def _test_overflow_height(self, y):
+        overflow = self._test_limit(y, self.height)
         if overflow != 0:
            data = {"overflow_height":overflow}
            self.dispatcher.postNotification(notification=overflow_height_notification_name, observable=self, data=data)
