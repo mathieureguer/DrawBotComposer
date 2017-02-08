@@ -49,7 +49,7 @@ class DrawBotComposer(object):
         self.dispatcher.postNotification(notification=translate_notification_name, observable=self, data=data)
         self._test_overflow(self.current_position_x, self.current_position_y)
 
-    def bump_translate(self, x, y):
+    def bump(self, x, y):
         """test overflow without doing the acutal translation"""
         bump_x = self.current_position_x + x
         bump_y = self.current_position_y + y
