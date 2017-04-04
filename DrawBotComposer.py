@@ -53,7 +53,7 @@ class DrawBotComposer(object):
         """test overflow without doing the acutal translation"""
         bump_x = self.current_position_x + x
         bump_y = self.current_position_y + y
-        self._test_overflow(bump_y, bump_y)
+        self._test_overflow(bump_x, bump_y)
     
     # Back to origin
 
