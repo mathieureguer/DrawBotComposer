@@ -1,3 +1,5 @@
+from __future__ import division
+
 from DrawBotComposer import *
 from defcon.objects.font import Font
 
@@ -22,17 +24,26 @@ class UFOTextBloc(DrawBotComposer):
                  vertical_alignment="baseline",
                  kern=True,
                  # justification prefs
-                 text_align="justify", 
+                 text_align="left", 
                  text_align_last="left",
                  text_justify="inter-word", 
                  hyphenate=True,
                  max_word_length=15,
-                 # drawing prefs
+                 # drawing attr
                  draw_grid=False,
                  draw_sidebarings=False,
+                 draw_vertical_metrics=False,
+                 draw_baseline=False,
                  draw_kern=False,
                  draw_spacer=False,
-                 draw_glyphs=True):
+                 draw_glyphs=True,
+                 # drawing style attr 
+                 grid_stroke = (0, 0, 1),
+                 grid_strokeWidth = .4,
+                 kern_fill = (0, 1, 1),
+                 kern_caption_font = "Monaco",
+                 kern_caption_fontSize = 1,
+                 ):
                      
         super(UFOTextBloc, self).__init__()
 
@@ -49,6 +60,7 @@ class UFOTextBloc(DrawBotComposer):
         self.height = height
 
         # font attr
+        self.kern = kern
         self.pt_size = pt_size
         self.font = None
         self.set_font(font)
@@ -61,20 +73,29 @@ class UFOTextBloc(DrawBotComposer):
         self.text_justify=text_justify
         self.hyphenate=hyphenate
         self.max_word_length=max_word_length
+        self.draw_vertical_metrics = draw_vertical_metrics
+        self.draw_baseline = draw_baseline
 
         # grid drawing attr
         self.draw_grid = draw_grid
         self.draw_glyphs = draw_glyphs
         self.draw_kern = draw_kern
         self.draw_sidebarings = draw_sidebarings
+
         self.draw_spacer = draw_spacer
+
+        # drawing style attr 
+        self.grid_stroke = grid_stroke
+        self.grid_strokeWidth = grid_strokeWidth
+        self.kern_fill = kern_fill
+        self.kern_caption_font = kern_caption_font
+        self.kern_caption_fontSize = kern_caption_fontSize
 
         if self.draw_grid == True:
             self._draw_grid_box()
         
         self._set_vertical_alignment(vertical_alignment)
         
-
         
         self.addObserver(self, "width_overflow", "DrawBotComposer.didOverflowWidth")
         self.addObserver(self, "height_overflow", "DrawBotComposer.didOverflowHeight")
@@ -90,14 +111,18 @@ class UFOTextBloc(DrawBotComposer):
         if len(self.current_slug) > 0 and self.text_overflow == None:
             self.current_slug.append({"type":"newline"})
             self.slugs.append(self.current_slug)
-            # draw
+        # draw
+        #while self.text_overflow == None:
         for s in self.slugs:
-            self._draw_slug(s, 
-                            text_align=self.text_align,
-                            text_align_last=self.text_align_last,
-                            text_justify=self.text_justify,
-                            hyphenate=self.hyphenate,
-                            max_word_length=self.max_word_length)
+            if len(s) > 0:
+                self._draw_slug(s, 
+                        text_align=self.text_align,
+                        text_align_last=self.text_align_last,
+                        text_justify=self.text_justify,
+                        hyphenate=self.hyphenate,
+                        max_word_length=self.max_word_length)
+        self.translate_back_to_origin()
+        return self.text_overflow
         
 
     # OBSERVERS
@@ -107,7 +132,6 @@ class UFOTextBloc(DrawBotComposer):
         
 
     def height_overflow(self, sender):
-        print sender.data
         if sender.data['overflow_height'] > 0:
             pass
         else:
@@ -115,7 +139,7 @@ class UFOTextBloc(DrawBotComposer):
        
     #  setter and getter
         
-    def add_text(self, glyph_list):
+    def add_text(self, glyph_list, notdef=".notdef"):
         self.glyph_list = glyph_list[:]
 
         # trigger overwritten functio
@@ -129,38 +153,39 @@ class UFOTextBloc(DrawBotComposer):
                 self._new_line()
             else:
                 if n in self._font_keys:
-                    g = f[n]
+                    g = self.font[n]
                 elif notdef in self._font_keys:
-                    g = f[notdef]
-                g = self.font[n]
+                    g = self.font[notdef]
+                else:
+                    g = None
+                if g != None:
+                    # trigger overwritten function
+                    self.will_preprocess_glyph()
 
-                # trigger overwritten function
-                self.will_preprocess_glyph()
+                    p = self._get_glyph_representation(g)
+                    path = BezierPath()
+                    path.appendPath(p)
+                    path.scale(self.ratio)
 
-                p = self._get_glyph_representation(g)
-                path = BezierPath()
-                path.appendPath(p)
-                path.scale(self.ratio)
+                    # check if the current glyph wont overshoot width boundaries
+                    if path.bounds():
+                        self.bump(g.width*self.ratio, 0)
+                    
+                    # fetch kern  
+                    if self.kern_parser and self.previous_glyph:
+                        k = self.kern_parser.get_kerning_pair_value((self.previous_glyph, n))
+                        if k:
+                            self.current_slug.append({"type":"kern", "width":k*self.ratio})
+                            self.translate(k*self.ratio, 0)
 
-                # check if the current glyph wont overshoot width boundaries
-                if path.bounds() and self.current_position_x + g.width*self.ratio > self.width:
-                    self._new_line()
-                
-                # fetch kern  
-                if self.kern_parser and self.previous_glyph:
-                    k = self.kern_parser.get_kerning_pair_value((self.previous_glyph, n))
-                    if k:
-                        self.current_slug.append({"type":"kern", "width":k*self.ratio})
-                        self.translate(k*self.ratio, 0)
+                    # add glyph to the slug
+                    self.current_slug.append({"type":"glyph", "path":path, "width":g.width*self.ratio, "glyph":g, "ratio":self.ratio})
+                    self.translate(g.width*self.ratio, 0)
+                    
+                    # trigger overwritten function
+                    self.did_preprocess_glyph()
 
-                # add glyph to the slug
-                self.current_slug.append({"type":"glyph", "path":path, "width":g.width*self.ratio, "glyph":g, "ratio":self.ratio})
-                self.translate(g.width*self.ratio, 0)
-                
-                # trigger overwritten function
-                self.did_preprocess_glyph()
-
-                self.previous_glyph = n
+                    self.previous_glyph = n
 
 
     def set_font(self, font, kern_parser=None):
@@ -169,10 +194,10 @@ class UFOTextBloc(DrawBotComposer):
             self._font_keys = font.keys()
             self._get_ratio()
             self.previous_glyph = None
-            if self.kern == True:
+            if self.kern == True and kern_parser == None:
                 self.kern_parser = KernParser(font)
             else:
-                self.kern_parser = None
+                self.kern_parser = kern_parser
 
 
     def set_pt_size(self, pt_size):
@@ -215,8 +240,10 @@ class UFOTextBloc(DrawBotComposer):
         assert the current slug
         Move to the start of a new line.
         """
-        
-        rest = self._hyphenate_slug(self.current_slug)
+        if len(self.current_slug) > 0:
+            rest = self._hyphenate_slug(self.current_slug, hyphenate=self.hyphenate)
+        else:
+            rest = None
         self.slugs.append(self.current_slug)
 
         # go to the start of the next line
@@ -266,7 +293,7 @@ class UFOTextBloc(DrawBotComposer):
 
     def _hyphenate_slug(self, slug, hyphenate=True, max_word_length=15):
         rest = None
-        if not hyphenate:
+        if hyphenate == False:
              last_space_index = self._find_slug_last_nonmarking(slug)
              pre_rest = slug[last_space_index+1:]
              if self._get_slug_glyph_count(pre_rest) < max_word_length:
@@ -287,7 +314,12 @@ class UFOTextBloc(DrawBotComposer):
         
 
     def _get_slug_spacer_count(self, slug):
-        return sum(i.get("type", None) == "spacer" for i in slug)
+        out = sum(i.get("type", None) == "spacer" for i in slug)
+        # little hack to prevent division by 0
+        # must investigate
+        if out == 0:
+            out = 1
+        return out
         
 
     def _get_slug_glyph_count(self, slug):
@@ -297,29 +329,35 @@ class UFOTextBloc(DrawBotComposer):
                       slug, 
                       text_align="justify", 
                       text_align_last="left",
-                      text_justify="inter-word"):
-        
-        if slug[-1]["type"] == "newline":
-            text_align = text_align_last
-            slug.pop()
-            
-        # get rid of trailing space
-        while slug[-1]["type"] == "glyph" and slug[-1]["path"].bounds() == None:
-            slug.pop()
-        
-        if text_align == "left":
-            slug.append({"type":"spacer"})
-        elif text_align == "right":
-            slug.insert(0, {"type":"spacer"})
-        elif text_align == "center":
-            slug.insert(-1, {"type":"spacer"})
-            slug.insert(0, {"type":"spacer"})
-        elif text_align == "justify" :
-            if text_justify == "distribute":
-                non_marking_only = False
-            else:
-                non_marking_only = True
-            slug = self._insert_spacers(slug, non_marking_only=non_marking_only)
+                      text_justify="inter-word"):        
+        if len(slug) > 0:
+            if slug[-1]["type"] == "newline":
+                text_align = text_align_last
+                slug.pop()
+        if len(slug) > 0:      
+            # get rid of trailing space
+            while len(slug) > 0 and slug[-1]["type"] == "glyph" and slug[-1]["path"].bounds() == None:
+                slug.pop()
+            # get rid of trailing kern on both side
+            while len(slug) > 0 and slug[0]["type"] == "kern":
+                slug.pop(0)
+            while len(slug) > 0 and slug[-1]["type"] == "kern":
+                  slug.pop()
+
+        if len(slug) > 0:
+            if text_align == "left":
+                slug.append({"type":"spacer"})
+            elif text_align == "right":
+                slug.insert(0, {"type":"spacer"})
+            elif text_align == "center":
+                slug.insert(-1, {"type":"spacer"})
+                slug.insert(0, {"type":"spacer"})
+            elif text_align == "justify" :
+                if text_justify == "distribute":
+                    non_marking_only = False
+                else:
+                    non_marking_only = True
+                slug = self._insert_spacers(slug, non_marking_only=non_marking_only)
         return slug
        
 
@@ -347,78 +385,96 @@ class UFOTextBloc(DrawBotComposer):
                   text_justify="inter-word", 
                   hyphenate=True,
                   max_word_length=15):
-        
+
         # trigger overwritten functio
         self.will_draw_slug()
 
         slug = slug[:]
-        x = self.current_position_x
         
+                    
+        slug = self._justify_slug(slug, 
+                                  text_align=text_align, 
+                                  text_align_last=text_align_last, 
+                                  text_justify=text_justify)
+
         if len(slug) > 0:
-            
-            slug = self._justify_slug(slug, 
-                                      text_align=text_align, 
-                                      text_align_last=text_align_last, 
-                                      text_justify=text_justify)
+
+            x = self.current_position_x
         
             if self.width:
-                remaining = self.width-0.1 - self._get_slug_width(slug)
+                remaining = self.width-0.2 - self._get_slug_width(slug)
                 spacer = remaining/(self._get_slug_spacer_count(slug))
             else:
                 spacer = 0
 
+            # draw the grid, if necessary 
+            if self.draw_baseline:
+                self._draw_baseline()
 
-        # draw the grid, if necessary 
-        if self.draw_grid:
-            self._draw_grid_line()
-        for i in slug:
-            if i["type"] == "glyph":
-                self.current_glyph = i["glyph"]
-                self.font = self.current_glyph.getParent()
-                self.ratio = i["ratio"]
-                width = i["width"]
-                if self.draw_sidebarings:
-                    self._draw_grid_sidebarings(width, self.font, self.ratio)
-                self.translate(width, 0)
-            elif i["type"] == "kern":
-                k = i["width"]
-                if self.draw_kern:
-                    self._draw_kern(k, self.font, self.ratio)
-                self.translate(k, 0)
-            elif i["type"] == "spacer":
-                if self.draw_spacer:
-                    self._draw_spacer(spacer, self.font, self.ratio)
-                self.translate(spacer, 0)
-        self.translate(-self.current_position_x + x, 0)
-    
+            last_vert_metrics_x_position = self.current_position_x
+            current_ratio = None
+            current_font = None
 
-        # draw the actual glyphs
-        for i in slug:
-            if i["type"] == "glyph":
-                self.current_glyph = i["glyph"]
-            
-                # trigger overwritten function
-                self.will_draw_glyph()
+            for i in slug:
+                if i["type"] == "glyph":
+                    self.current_glyph = i["glyph"]
+                    self.font = self.current_glyph.getParent()
+                    self.ratio = i["ratio"]
+                    width = i["width"]
+                    if self.draw_sidebarings:
+                        self._draw_grid_sidebarings(width, self.font, self.ratio)
+                    if self.font != current_font or self.ratio != current_ratio:
+                        if self.draw_vertical_metrics and current_font != None and current_ratio != None:
+                            self._draw_vertical_metrics((last_vert_metrics_x_position, self.current_position_x), current_font, current_ratio)
+                            last_vert_metrics_x_position = self.current_position_x
+                    current_font = self.font
+                    current_ratio = self.ratio
 
-                path = i["path"]
-                width = i["width"]
-                if self.draw_glyphs:
-                    drawPath(path)
-                self.translate(width, 0)
+                    self.translate(width, 0)
+                elif i["type"] == "kern":
+                    k = i["width"]
+                    if self.draw_kern:
+                        self._draw_kern(k, self.font, self.ratio)
+                    self.translate(k, 0)
+                elif i["type"] == "spacer":
+                    if self.draw_spacer:
+                        self._draw_spacer(spacer, self.font, self.ratio)
+                    self.translate(spacer, 0)
 
-                # trigger overwritten function
-                self.did_draw_glyph()
+            if self.draw_vertical_metrics:
+                self._draw_vertical_metrics((last_vert_metrics_x_position, self.current_position_x), current_font, current_ratio)
 
-            elif i["type"] == "kern":
-                k = i["width"]
-                self.translate(k, 0)
-            elif i["type"] == "spacer":
-                self.translate(spacer, 0)
+
+            self.translate(-self.current_position_x + x, 0)
         
-        self.translate(-self.current_position_x + x, 0)
-        self.translate(0, -self.line_space)
-        # trigger overwritten functio
-        self.did_draw_slug()
+
+            # draw the actual glyphs
+            for i in slug:
+                if i["type"] == "glyph":
+                    self.current_glyph = i["glyph"]
+                
+                    # trigger overwritten function
+                    self.will_draw_glyph()
+
+                    path = i["path"]
+                    width = i["width"]
+                    if self.draw_glyphs:
+                        drawPath(path)
+                    self.translate(width, 0)
+
+                    # trigger overwritten function
+                    self.did_draw_glyph()
+
+                elif i["type"] == "kern":
+                    k = i["width"]
+                    self.translate(k, 0)
+                elif i["type"] == "spacer":
+                    self.translate(spacer, 0)
+            
+            self.translate(-self.current_position_x + x, 0)
+            self.translate(0, -self.line_space)
+            # trigger overwritten functio
+            self.did_draw_slug()
 
     
     # GRID DRAWERS
@@ -434,15 +490,24 @@ class UFOTextBloc(DrawBotComposer):
             h = -height()
         else:
             h = self.height
-        print 0, 0, w, h
         rect(0, 0, w, h)
         restore()
               
 
-    def _draw_grid_line(self):
+    def _draw_baseline(self):
         save()
         self._apply_grid_param()
         line((0, 0), (self.width, 0))
+        restore()
+
+    def _draw_vertical_metrics(self, (start, finish), font, ratio):
+        save()
+        self._apply_grid_param()
+        width = -(finish-start)
+        line((0, font.info.ascender*ratio), (width, font.info.ascender*ratio))
+        line((0, font.info.descender*ratio), (width, font.info.descender*ratio))
+        line((0, font.info.xHeight*ratio), (width, font.info.xHeight*ratio))
+        line((0, font.info.capHeight*ratio), (width, font.info.capHeight*ratio))
         restore()
         
 
@@ -474,17 +539,16 @@ class UFOTextBloc(DrawBotComposer):
     # drawing params
     
     def _apply_grid_param(self):
-        stroke(0, 0, 1)
-        strokeWidth(.4)
+        stroke(*self.grid_stroke)
+        strokeWidth(self.grid_strokeWidth)
         fill(None)
         
     def _apply_kern_param(self):
         stroke(None)
-        fill(0, 1, 1)
-        font("Monaco")
-        fontSize(1)
+        fill(*self.kern_fill)
+        font(self.kern_caption_font)
+        fontSize(self.kern_caption_fontSize)
             
-
 
 #----------
 # representation
@@ -538,7 +602,6 @@ class KernParser(object):
         self.groups_1st, self.groups_2nd = self.extract_kerning_groups()
         self.groups_1st_reversed = self.reverse_kern_groups(self.groups_1st)
         self.groups_2nd_reversed = self.reverse_kern_groups(self.groups_2nd)
-        self.time = 0
 
 
     # data collectors
@@ -590,7 +653,6 @@ class KernParser(object):
     # kern pair extractors
             
     def get_kerning_pair(self, (a, b)):
-        t = time.time()
 
         # get relevant glyph or class
         if a in self.groups_1st_reversed:
@@ -610,7 +672,6 @@ class KernParser(object):
             for t2 in target_2nd:
                 if (t1, t2) in self.kern:
                     out = KernPair(a, b, t1, t2, self.kern[t1, t2])
-        self.time += (time.time()-t)
         return out
 
 
