@@ -1,7 +1,8 @@
-from __future__ import division
 
-from DrawBotComposer import *
+
+from .DrawBotComposer import *
 from defcon.objects.font import Font
+from functools import reduce
 
 
 def splittext_linebreak(string, cmap, linebreaks="\n"):
@@ -191,7 +192,7 @@ class UFOTextBloc(DrawBotComposer):
     def set_font(self, font, kern_parser=None):
         if font != self.font:
             self.font = font
-            self._font_keys = font.keys()
+            self._font_keys = list(font.keys())
             self._get_ratio()
             self.previous_glyph = None
             if self.kern == True and kern_parser == None:
@@ -284,7 +285,7 @@ class UFOTextBloc(DrawBotComposer):
 
     def _get_glyph_representation(self, glyph):
         """ get a glyph repr, will cache the result """
-        if not self._glyph_repr.has_key(glyph):
+        if glyph not in self._glyph_repr:
             self._glyph_repr[glyph] = glyph.getRepresentation('DBComposer_BezierPath')
         return self._glyph_repr[glyph]
 
@@ -500,7 +501,8 @@ class UFOTextBloc(DrawBotComposer):
         line((0, 0), (self.width, 0))
         restore()
 
-    def _draw_vertical_metrics(self, (start, finish), font, ratio):
+    def _draw_vertical_metrics(self, xxx_todo_changeme, font, ratio):
+        (start, finish) = xxx_todo_changeme
         save()
         self._apply_grid_param()
         width = -(finish-start)
@@ -558,15 +560,17 @@ class UFOTextBloc(DrawBotComposer):
 
 from defcon import addRepresentationFactory
 
-def NSBezierPathFactory(glyph, f):
+def NSBezierPathFactory(glyph):
     from fontTools.pens.cocoaPen import CocoaPen
+    f = glyph.font
     pen = CocoaPen(f)
     glyph.draw(pen)
     return pen.path
     
     
-def BezierPathFactory(glyph, f):
+def BezierPathFactory(glyph):
     from fontTools.pens.cocoaPen import CocoaPen
+    f = glyph.font
     pen = CocoaPen(f)
     glyph.draw(pen)
     p = pen.path
@@ -613,7 +617,7 @@ class KernParser(object):
         """
         groups_1st = []
         groups_2nd = []
-        for key_1st, key_2nd in self.kern.keys():
+        for key_1st, key_2nd in list(self.kern.keys()):
             if key_1st.startswith(prefix):
                 groups_1st.append(key_1st)
             if key_2nd.startswith(prefix):
@@ -644,17 +648,18 @@ class KernParser(object):
                       raise ValueError("glyph in several classes")
                   reverse_dict[g] = key  
             except KeyError:
-                print "WARNING - %s is present in the kerning table but cannot be found in you font's groups" %(key)
+                print("WARNING - %s is present in the kerning table but cannot be found in you font's groups" %(key))
             except ValueError:
-                print "WARNING - %s is present in several groups: %s %s" %(g, reverse_dict[g], key)
+                print("WARNING - %s is present in several groups: %s %s" %(g, reverse_dict[g], key))
         return reverse_dict
    
 
     # kern pair extractors
             
-    def get_kerning_pair(self, (a, b)):
+    def get_kerning_pair(self, xxx_todo_changeme1):
 
         # get relevant glyph or class
+        (a, b) = xxx_todo_changeme1
         if a in self.groups_1st_reversed:
             target_1st = [self.groups_1st_reversed[a], a]
         else:
@@ -675,7 +680,8 @@ class KernParser(object):
         return out
 
 
-    def get_kerning_pair_value(self, (a, b)):
+    def get_kerning_pair_value(self, xxx_todo_changeme2):
+        (a, b) = xxx_todo_changeme2
         pair = self.get_kerning_pair((a,b))
         return pair.value
         
@@ -689,7 +695,7 @@ class KernParser(object):
 
     def print_kerning_pair_list(self, pairlist):
         for p in self.get_kerning_pair_list(pairlist):
-            print p
+            print(p)
         
         
 class KernPair(object):
